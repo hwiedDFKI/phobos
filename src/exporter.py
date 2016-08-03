@@ -828,6 +828,171 @@ def findChild(parent, model, childlist):
             return childlist + [findChild(l['name'], model, childlist)]
     return []
 
+def exportModelToOpenRave(model, filepath):
+    """This functions writes the OpenRave XML representation of a given model into
+    a file at the given filepath. An existing file with this path will be overwritten.
+
+    :param model: Dictionary of the model to be exported as OpenRave.
+    :type model: dict
+    :param filepath: The path of the exported file.
+    :type filepath: str
+
+    """
+    log("Export OpenRave to " + filepath, "INFO", "exportModelToOpenRave")
+
+    output = ['<?xml version="1.0" encoding="utf-8"?>\n\n', '<Robot name="' + model['modelname'] + '">\n',
+              '<KinBody name="' + model['modelname'] + '">\n']
+    # sort links hierarchically (necessary for OpenRave to work...)
+    linklist = []
+    parent = None
+    for l in model['links']:
+        if model['links'][l]['parent'] not in model['links']:
+            print(model['links'][l]['parent'])
+            linklist.append(l)
+            parent = l
+    while len(linklist) < len(model['links']):
+        for l in model['links']:
+            if model['links'][l]['parent'] == parent:
+                linklist.append(l)
+                parent = l
+
+    fakevisuals = []
+    # export link information
+    for l in linklist:
+        link = model['links'][l]
+        if link['parent'] in model['links']:
+            output.append(indent + '<Body name="' + l + '" type="dynamic">\n')
+            output.append(indent * 2 + '<offsetfrom>' + link['parent'] + '</offsetfrom>\n')
+            output.append(indent * 2 + '<translation>' + l2str(link['pose']['translation'])
+                          + '</translation>\n')
+            quaternion = mathutils.Quaternion(link['pose']['rotation_quaternion'])
+            axis, angle = quaternion.to_axis_angle()
+            print(angle)
+            angle = angle / 3.14159265359 * 180
+            if angle > 180:
+                angle -= 180
+            if angle < 180:
+                angle -= 180
+            angleaxis = list(axis) + [angle]
+            angleaxis = [round(a, 5) for a in angleaxis]
+            #output.append(indent * 2 + '<rotationaxis>' + l2str(angleaxis) + '</rotationaxis>\n')
+            output.append(indent*2 + '<quat>' + l2str(list(quaternion)) + '</quat>\n')
+        else:
+            output.append(indent + '<Body name="' + l + '" type="static">\n')
+        # visual objects
+        primary_visual_processed = False
+        if link['visual']:
+            for v in link['visual']:
+                if not primary_visual_processed:
+                    output.append(indent*2 + '<Geom type="trimesh">\n')
+                    output.append(indent*3 + '<Translation>' + l2str(link['visual'][v]['pose']['translation']) + '</Translation>\n')
+                    quaternion = mathutils.Quaternion(link['visual'][v]['pose']['rotation_quaternion'])
+                    axis, angle = quaternion.to_axis_angle()
+                    print(angle)
+                    angle = angle / 3.14159265359 * 180
+                    if angle > 180:
+                        angle -= 180
+                    if angle < 180:
+                        angle -= 180
+                    angleaxis = list(axis) + [angle]
+                    angleaxis = [round(a, 5) for a in angleaxis]
+                    try:
+                    #output.append(indent*3 + '<rotationaxis>' + l2str(angleaxis) + '</rotationaxis>\n')
+                        output.append(indent*3 + '<quat>' + l2str(list(quaternion)) + '</quat>\n')
+                        output.append(indent*3 + '<data>' + link['visual'][v]['geometry']['filename'] + ' 1.0</data>\n')
+                        output.append(indent*3 + '<Render>' + link['visual'][v]['geometry']['filename'] + ' 1.0</Render>\n')
+                        output.append(indent*2 + '</Geom>\n')
+                        primary_visual_processed = True
+                    except KeyError:
+                        log("No primary visual found for " + link['name'], "ERROR", "exportModelOpenRave")
+                else:
+                    fakevisual = {'name': link['name']+'_'+v,
+                                  'parent': l,
+                                  'translation': l2str(link['visual'][v]['pose']['translation']),
+                                  'quat': l2str(mathutils.Quaternion(link['visual'][v]['pose']['rotation_quaternion'])),
+                                  'file': link['visual'][v]['geometry']['filename']}
+                    fakevisuals.append(fakevisual)
+        #     for c in link['collision']:
+        #         col = link['collision'][c]
+        #         output.append(indent * 3 + '<collision name="' + col['name'] + '">\n')
+        #         output.append(xmlline(4, 'origin', ['xyz', 'rpy'],
+        #                               [l2str(col['pose']['translation']), l2str(col['pose']['rotation_euler'])]))
+        #         writeURDFGeometry(output, col)
+        #         output.append(indent * 3 + '</collision>\n')
+        # else:
+        #output.append(indent*2 + '<Geom type="box">\n')
+        #output.append(indent*3 + '<Translation>0 0 0</Translation>\n')
+        #output.append(indent*3 + '<Extents>0.1 0.1 0.1</Extents>\n')
+        #output.append(indent*2 + '</Geom>\n')
+        # FIXME: this needs more indentation anyway
+        # # mass and inertia
+        # if 'mass' in link['inertial'] and 'inertia' in link['inertial']:
+        #     output.append(indent + '<mass type="custom">\n')
+        #     output.append(indent * 2 + '<total>' + str(link['inertial']['mass']) + '</total>\n')
+        #     if 'pose' in link['inertial']:
+        #         output.append(indent * 2 + '<com>' + l2str(link['inertial']['pose']['translation']) + '</com>\n')
+        #         i = link['inertial']['inertia']
+        #         inertia = (i[0], i[1], i[2], 0, i[3], i[4], 0, 0, i[5])
+        #     output.append(indent * 2 + '<inertia>' + l2str(inertia) + '</inertia>\n')
+        #     output.append(indent + '</mass>\n')
+        output.append(indent + '</Body>\n\n')
+        # now add fake bodies
+        for f in fakevisuals:
+            if f['parent'] == l:
+                output.append(indent + '<Body name="' + f['name'] + '" type="dynamic">\n')
+                output.append(indent*2 + '<offsetfrom>' + f['parent'] + '</offsetfrom>\n')
+                output.append(indent*2 + '<Geom type="trimesh">\n')
+                output.append(indent*3 + '<Translation>' + f['translation'] + '</Translation>\n')
+                output.append(indent*3 + '<quat>' + f['quat'] + '</quat>\n')
+                output.append(indent*3 + '<data>' + f['file'] + ' 1.0</data>\n')
+                output.append(indent*3 + '<Render>' + f['file'] + ' 1.0</Render>\n')
+                output.append(indent*2 + '</Geom>\n')
+                output.append(indent + '</Body>\n\n')
+
+    # export joint information
+    for j in model['joints']:
+        joint = model['joints'][j]
+        enable = ' enable="true"' if joint["type"] == "revolute" else ' enable="false"'
+        output.append(indent + '<Joint name="' + 'joint_'+joint['name'] + '" type="hinge"'+enable+'>\n')  # FIXME: totally a hack
+        output.append(indent*2 + '<Body>' + joint['parent'] + '</Body>\n')
+        output.append(indent*2 + '<Body>' + joint['child'] + '</Body>\n')
+        output.append(indent*2 + '<offsetfrom>' + joint['child'] + '</offsetfrom>\n')
+        if 'axis' in joint:
+            output.append(indent*2 + '<axis>' + l2str(joint['axis']) + '</axis>\n')
+
+        if 'limits' in joint:
+            lims = joint['limits']
+            if 'lower' in lims and 'upper' in lims:
+                output.append(indent*2 + '<limitsdeg>' + str(lims['lower']/3.14159*180) + ' ' + str(lims['upper']/3.14159*180) + '</limitsdeg>\n')
+            if 'effprt' in lims:
+                output.append(indent*2 + '<maxtorque>' + str(lims['effort']) + '</maxtorque>\n')
+            if 'velocity' in lims:
+                output.append(indent*2 + '<maxvel>' + str(lims['velocity']) + '</maxvel>\n')
+        #output.append(indent*2 + '<weight>' + joint['child'] + '</weight>\n')
+        #output.append(indent*2 + '<resolution>' + joint['child'] + '</resolution>\n')
+        #output.append(indent*2 + '<rotorinertia>' + joint['child'] + '</rotorinertia>\n')
+        output.append(indent + '</Joint>\n\n')
+    # now add fake joints
+    for f in fakevisuals:
+        output.append(indent + '<Joint name="' + 'joint_'+f['name'] + '" type="hinge" enable="false">\n')
+        output.append(indent*2 + '<Body>' + f['parent'] + '</Body>\n')
+        output.append(indent*2 + '<Body>' + f['name'] + '</Body>\n')
+        output.append(indent*2 + '<offsetfrom>' + f['name'] + '</offsetfrom>\n')
+        output.append(indent + '</Joint>\n\n')
+    # adding adjacent information
+    for j in model['joints']:
+        joint = model['joints'][j]
+        output.append(indent + '<adjacent>' + joint['parent'] + ' ' + joint['child'] + '</adjacent>\n')
+    for j in fakevisuals:
+        output.append(indent + '<adjacent>' + f['parent'] + ' ' + f['name'] + '</adjacent>\n')
+    # finish the export
+    output.append('</KinBody>\n')
+    output.append('</Robot>\n')
+    with open(filepath, 'w') as outputfile:
+        outputfile.write(''.join(output))
+    log("Writing model data to " + filepath, "INFO", "exportModelOpenRave")
+
+
 def exportModelToSMURF(model, path):
     """This function exports a given model to a specific path as a smurf representation.
 
@@ -1240,6 +1405,7 @@ def export(model, objectlist, path=None):
     urdf = bpy.data.worlds[0].exportURDF
     srdf = bpy.data.worlds[0].exportSRDF
     smurf = bpy.data.worlds[0].exportSMURF
+    openrave = bpy.data.worlds[0].exportOpenRave
     meshexp = bpy.data.worlds[0].exportMeshes
     texexp = bpy.data.worlds[0].exportTextures
     objexp = bpy.data.worlds[0].useObj
@@ -1248,7 +1414,7 @@ def export(model, objectlist, path=None):
     daeexp = bpy.data.worlds[0].useDae
 
     # export data
-    if yaml or urdf or smurf:
+    if yaml or urdf or smurf or openrave:
         if yaml:
             exportModelToYAML(model, outpath + model["modelname"] + "_dict.yml")
         if srdf:
@@ -1266,6 +1432,12 @@ def export(model, objectlist, path=None):
                 exportModelToURDF(model, os.path.join(outpath, 'urdf', model["modelname"] + ".urdf"))
             else:
                 exportModelToURDF(model, outpath + model["modelname"] + ".urdf")
+        elif openrave:
+            if bpy.data.worlds[0].structureExport:
+                securepath(os.path.join(outpath, 'openrave'))
+                exportModelToOpenRave(model, os.path.join(outpath, 'openrave', model["modelname"] + ".xml"))
+            else:
+                exportModelToOpenRave(model, outpath + model["modelname"] + ".xml")
     if meshexp:
         meshnames = set()
         exportobjects = set()
