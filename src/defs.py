@@ -246,6 +246,12 @@ class PhobosPrefs(AddonPreferences):
         default=True
     )
 
+    pluginspath = StringProperty(
+        name='pluginspath',
+        subtype='FILE_PATH',
+        default='.'
+    )
+
     def draw(self, context):
         layout = self.layout
         layout.label(text="Logging Settings")
@@ -253,6 +259,9 @@ class PhobosPrefs(AddonPreferences):
         layout.prop(self, "logtofile", text="write to logfile")
         layout.prop(self, "logtoterminal", text="only display in terminal")
         layout.prop(self, "loglevel", text="log level")
+
+        layout.separator()
+        layout.prop(self, 'pluginspath', text="Path for plugins")
 
 def register():
     print("Registering " + __name__)
