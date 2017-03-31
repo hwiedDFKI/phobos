@@ -597,6 +597,25 @@ class CreateInertialOperator(Operator):
         return len(context.selected_objects) > 0
 
 
+class AddGravityVector(Operator):
+    """Add a vector representing gravity in the scene"""
+    bl_idname = "phobos.add_gravity"
+    bl_label = "Add Gravity"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    property_name = FloatVectorProperty(
+        name="Gravity Vector",
+        default=(0, 0, -9.81),
+        description="Gravity vector")
+
+    # TODO check this feature
+    def execute(self, context):
+        bpy.ops.object.empty_add(type='SINGLE_ARROW')
+        context.active_object.name = "gravity"
+        bpy.ops.transform.rotate(value=(math.pi), axis=(1.0, 0.0, 0.0))
+        return {'FINISHED'}
+
+
 class EditYAMLDictionary(Operator):
     """Edit object dictionary as YAML"""
     bl_idname = 'phobos.edityamldictionary'
