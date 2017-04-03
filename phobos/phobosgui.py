@@ -26,7 +26,6 @@ Created on 6 Jan 2014
 @author: Kai von Szadkowski
 """
 
-#import os
 import sys
 import inspect
 
@@ -194,39 +193,6 @@ class Models_Poses_UIList(bpy.types.UIList):
         return flt_flags, flt_neworder
 
 
-class MessageOperator(bpy.types.Operator):
-    bl_idname = "phobos.message"
-    bl_label = "Display a message in a window"
-    type = StringProperty()
-    message = StringProperty()
-
-    def execute(self, context):
-        self.report({'INFO'}, self.message)
-        print(self.message)
-        return {'FINISHED'}
-
-    def invoke(self, context, event):
-        wm = context.window_manager
-        result = wm.invoke_popup(self, width=400, height=200)
-        return result
-
-    def draw(self, context):
-        self.layout.label("Phobos")
-        row = self.layout  # .split(0.25)
-        row.prop(self, "type")
-        row.prop(self, "message")
-        # row = self.layout#.split(0.80)
-        row.label("")
-        row.operator("error.ok")
-
-
-class OkOperator(bpy.types.Operator):
-    bl_idname = "phobos.ok"
-    bl_label = "OK"
-
-    def execute(self, context):
-        return {'FINISHED'}
-
 def showPreview(self,value):
     bpy.ops.scene.change_preview()
 
@@ -234,7 +200,7 @@ def showPreview(self,value):
 class PhobosToolsPanel(bpy.types.Panel):
     """A Custom Panel in the Phobos viewport toolbar"""
     bl_idname = "TOOLS_PT_PHOBOS_TOOLS"
-    bl_label = "Editing Tools"
+    bl_label = "General Tools"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
     bl_category = 'Phobos'
@@ -308,8 +274,6 @@ class PhobosModelPanel(bpy.types.Panel):
         kc2.operator('phobos.define_geometry')
         kc2.operator('phobos.set_collision_group')
         kc2.operator('phobos.smoothen_surface')
-        kc2.operator('phobos.edit_lod')
-        #kc1.operator('phobos.set_origin_to_com', text="Set Origin to COM")
 
         # Masses, Inertia & Hardware
         layout.separator()
@@ -317,8 +281,6 @@ class PhobosModelPanel(bpy.types.Panel):
         hw1 = minlayout.column(align=True)
         hw1.label(text="Hardware", icon='MOD_SCREW')
         hw1.operator('phobos.add_motor')
-        hw1.operator('phobos.add_sensor')
-        hw1.operator("phobos.add_controller")
         mc1 = minlayout.column(align=True)
         mc1.label(text="Masses & Inertia", icon='PHYSICS')
         mc1.operator('phobos.calculate_mass')
@@ -391,13 +353,13 @@ class PhobosModelPanel(bpy.types.Panel):
 class PhobosExportPanel(bpy.types.Panel):
     """A Custom Panel in the Phobos viewport toolbar"""
     bl_idname = "TOOLS_EXPORT_PT_PHOBOS"
-    bl_label = "Export & Import"
+    bl_label = "Export"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
     bl_category = 'Phobos'
 
     def draw_header(self, context):
-        self.layout.label(icon='FILESEL')
+        self.layout.label(icon='EXPORT')
 
     def draw(self, context):
         expsets = bpy.data.worlds[0].phobosexportsettings
@@ -425,15 +387,15 @@ class PhobosExportPanel(bpy.types.Panel):
 
         c1 = inlayout.column(align=True)
         c1.label(text="Mesh export")
-        for meshtype in meshes.mesh_types:
+        for meshtype in sorted(meshes.mesh_types):
             if 'export' in meshes.mesh_types[meshtype]:
                 typename = "export_mesh_" + meshtype
                 c1.prop(bpy.data.worlds[0], typename)
-        c1.label(text="output: " + bpy.data.worlds[0].phobosexportsettings.outputMeshtype)
+        c1.prop(bpy.data.worlds[0].phobosexportsettings, 'outputMeshtype')
 
         c2 = inlayout.column(align=True)
         c2.label(text="Model Export")
-        for entitytype in entities.entity_types:
+        for entitytype in sorted(entities.entity_types):
             if 'export' in entities.entity_types[entitytype]:
                 typename = "export_entity_" + entitytype
                 c2.prop(bpy.data.worlds[0], typename)
@@ -444,7 +406,6 @@ class PhobosExportPanel(bpy.types.Panel):
         ec1.operator("phobos.export_robot", text="Export Robot Model", icon="EXPORT")
         # FIXME: issue with export and import of models with new generic system
         #ec2 = layout.column(align=True)
-        ec1.operator("phobos.import_robot_model", text="Import Robot Model", icon="IMPORT")
 
 #        layout.separator()
 #        layout.label(text="Baking")
@@ -457,6 +418,22 @@ class PhobosExportPanel(bpy.types.Panel):
         self.layout.prop(expsets, "sceneName", text="Name")
         #self.layout.prop(expsets, "heightmapMesh", text="export heightmap as mesh")
         layout.operator("phobos.export_scene", icon="WORLD_DATA")
+
+
+class PhobosImportPanel(bpy.types.Panel):
+    """A Custom Panel in the Phobos viewport toolbar"""
+    bl_idname = "TOOLS_IMPORT_PT_PHOBOS"
+    bl_label = "Import"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'TOOLS'
+    bl_category = 'Phobos'
+
+    def draw_header(self, context):
+        self.layout.label(icon='IMPORT')
+
+    def draw(self, context):
+        self.layout.operator("phobos.import_robot_model", text="Import Robot Model", icon="IMPORT")
+        self.layout.operator("phobos.import_component", text="Import Component", icon="IMPORT")
 
 
 class PhobosObjectPanel(bpy.types.Panel):
@@ -494,6 +471,18 @@ class PhobosObjectPanel(bpy.types.Panel):
             #    bpy.context.active_object[prop] = defs.type_properties[bpy.context.active_object.phobostype+"_default"]
 
 
+def get_operator_manuals():
+    """This allows you to right click on a button and link to the manual
+
+    :return: tuple
+
+    """
+    url_manual_prefix = "https://github.com/rock-simulation/phobos/wiki/Operators#"
+    url_manual_ops = tuple(('bpy.ops.phobos.' + opname, opname.replace('_', '-'),)
+                           for opname in dir(bpy.ops.phobos) if not opname.startswith("__"))
+    return url_manual_prefix, url_manual_ops
+
+
 def register():
     print("Registering phobosgui...")
 
@@ -518,17 +507,24 @@ def register():
             typename = "export_scene_" + scenetype
             setattr(bpy.types.World, typename, BoolProperty(name=scenetype, default=False))
 
-    # Register classes (cannot be automatic, as it is placed in gui in the registering order)
-    for key, classdef in inspect.getmembers(sys.modules[__name__], inspect.isclass):
-        try:
-            if classdef.__bases__[0] != bpy.types.Panel:
-                bpy.utils.register_class(classdef)
-        except ValueError:
-            print('Error with class registration:', key, classdef)
+    # Register classes (cannot be automatic, as panels are placed in gui in the registering order)
+    #     for key, classdef in inspect.getmembers(sys.modules[__name__], inspect.isclass):
+    #         try:
+    #             if classdef.__bases__[0] != bpy.types.Panel:
+    #                 bpy.utils.register_class(classdef)
+    #         except ValueError:
+    #             print('Error with class registration:', key, classdef)
+    bpy.utils.register_class(ModelPoseProp)
+    bpy.utils.register_class(PhobosPrefs)
+    bpy.utils.register_class(PhobosExportSettings)
+    #bpy.utils.register_class(Mesh_Export_UIList)
+    #bpy.utils.register_class(Models_Poses_UIList)
+
     bpy.utils.register_class(PhobosToolsPanel)
     bpy.utils.register_class(PhobosModelPanel)
     #bpy.utils.register_class(PhobosScenePanel)
     bpy.utils.register_class(PhobosExportPanel)
+    bpy.utils.register_class(PhobosImportPanel)
     bpy.utils.register_class(PhobosObjectPanel)
 
     bpy.types.World.phobosexportsettings = PointerProperty(type=PhobosExportSettings)
@@ -539,6 +535,9 @@ def register():
     # Read in model and pose data from the respective folders
     loadModelsAndPoses()
 
+    # Add manuals to operator buttons
+    bpy.utils.register_manual_map(get_operator_manuals)
+
 
 def unregister():
     print("Unregistering phobosgui...")
@@ -546,3 +545,6 @@ def unregister():
     # Unregister classes
     for key, classdef in inspect.getmembers(sys.modules[__name__], inspect.isclass):
         bpy.utils.unregister_class(classdef)
+
+    # Remove manuals from buttons
+    bpy.utils.unregister_manual_map(get_operator_manuals)

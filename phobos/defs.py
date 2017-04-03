@@ -28,17 +28,11 @@ along with Phobos.  If not, see <http://www.gnu.org/licenses/>.
 File defs.py
 
 Created on 7 Jan 2014
-
-NOTE: This module is used to provide a number of global definitions which
-are used by the other modules. If you make changes to this module,
-do not include any imports which are not part of the standard python 3 libray.
-This module may well be imported and used outside of the MARS Blender Tools
-in the future.
 """
 
 import os
-import re
 import yaml
+from re import compile
 from phobos.phoboslog import log
 
 # phobos version number
@@ -104,30 +98,14 @@ type_properties = {"undefined": (),
                    "light_default": ('new_light', 'true', '1.0')
                    }
 
-# default materials used in Phobos
-defaultmaterials = {
-    'phobos_joint': {'diffuse': (0, 0, 1), 'specular': (1, 1, 1), 'alpha': 1.0, 'diffuse_intensity': 1.0},
-    'phobos_name': {'diffuse': (1, 1, 1), 'specular': (1, 1, 1), 'alpha': 1.0, 'diffuse_intensity': 1.0},
-    'phobos_laserscanner': {'diffuse': (1.0, 0.08, 0.08), 'specular': (1, 1, 1), 'alpha': 0.3,
-                            'diffuse_intensity': 1.0},
-    'phobos_tof-camera': {'diffuse': (0.44, 1, 0.735), 'specular': (1, 1, 1), 'alpha': 0.3, 'diffuse_intensity': 0.7},
-    'phobos_inertial': {'diffuse': (1, 0.18, 0), 'specular': (1, 1, 1), 'alpha': 1.0, 'diffuse_intensity': 1.0},
-    'phobos_sensor': {'diffuse': (0.8, 0.75, 0), 'specular': (1, 1, 1), 'alpha': 1.0, 'diffuse_intensity': 1.0},
-    'phobos_controller': {'diffuse': (0.518, 0.364, 0.8), 'specular': (1, 1, 1), 'alpha': 0.3,
-                          'diffuse_intensity': 0.7},
-    'phobos_indicator1': {'diffuse': (1, 0, 0), 'specular': (1, 1, 1), 'alpha': 1.0, 'diffuse_intensity': 1.0},
-    'phobos_indicator2': {'diffuse': (0, 1, 0), 'specular': (1, 1, 1), 'alpha': 1.0, 'diffuse_intensity': 1.0},
-    'phobos_indicator3': {'diffuse': (0, 0, 1), 'specular': (1, 1, 1), 'alpha': 1.0, 'diffuse_intensity': 1.0},
-    'phobos_indicator4': {'diffuse': (1, 0, 1), 'specular': (1, 1, 1), 'alpha': 1.0, 'diffuse_intensity': 1.0},
-    'phobos_indicator5': {'diffuse': (1, 1, 0), 'specular': (1, 1, 1), 'alpha': 1.0, 'diffuse_intensity': 1.0},
-    'phobos_indicator6': {'diffuse': (0, 1, 1), 'specular': (1, 1, 1), 'alpha': 1.0, 'diffuse_intensity': 1.0},
-    }
-
 # definitions of model elements to be read in
-dictConstraints = {}
-motortypes = []
-sensortypes = []
-sensorProperties = {}
+definitions = {'motors': {},
+               'sensors': {},
+               'controllers': {},
+               'algorithms': {},
+               'materials': {},
+               'model': {}
+               }
 
 
 def updateDefs(defsFolderPath):
@@ -138,34 +116,28 @@ def updateDefs(defsFolderPath):
 
     """
     dicts = __parseAllYAML(defsFolderPath)
-    for entry in dicts:
-        if 'Sensors' in entry:
-            for sens in entry['Sensors']:
-                if sens not in sensortypes:
-                    sensortypes.append(sens)
-                    sensorProperties[sens] = entry['Sensors'][sens]
-        if 'DictConstraints' in entry:
-            for cons in entry['DictConstraints']:
-                if cons not in dictConstraints:
-                    dictConstraints[cons] = entry['DictConstraints'][cons]
-        if 'Motors'in entry:
-            for motor in entry['Motors']:
-                if (motor,) * 3 not in motortypes:
-                    motortypes.append((motor,) * 3)
-    # Extending dictConstraints
-    dictConstraints['sensors']['$forElem']['$selection__type'] = sensorProperties
+    for dict in dicts:
+        for category in dict:
+            for key, value in dict[category].items():
+                if category not in definitions:
+                    definitions[category] = {}
+                if key in definitions[category]:
+                    log("Entry for "+category+'/'+key+" will be overwritten while parsing definitions.", "WARNING")
+                definitions[category][key] = value
+    # Extending model definition
+    definitions['model']['sensors']['$forElem']['$selection__type'] = definitions['sensors']
 
 
 def __evaluateString(s):
     """Evaluates a string by searching for mathematical expressions enclosed
-    in & and evaluating the inner string as python code.
+    in '&' and evaluating the inner string as python code.
 
     :param s: The string to evaluate.
     :type s: str
     :return: str -- the evaluated string.
     """
     import math  # needed for evaluation of strings (see below)
-    p = re.compile('&.*&')
+    p = compile('&.*&')
     for ma in p.findall(s):
         try:
             s = s.replace(ma, str(eval(ma[1:-1])))
@@ -177,29 +149,32 @@ def __evaluateString(s):
 
 def __parseAllYAML(path):
     """Reads all .yml files in the given path and loads them.
-    It also evaluates the by & enclosed expressions in this file.
+    It also evaluates the expressions enclosed by '&' in those files.
 
-    :param path: The path to open all files in.
+    :param path: The path from which to parse all files.
     :type path: str
     :return: dict -- The dictionary with all parsed YAML files.
 
     """
-    #TODO: Better Exception handling!
     dicts = []
     for root, dirs, files in os.walk(path):
         for file in files:
             print('  '+file)
             if file.endswith(".yml"):
                 try:
-                    f = open(path+'/'+file, 'r') #TODO: Better way to handle filepath and avoid double '/'?
-                    tmpString = f.read()
+                    f = open(os.path.join(path, file), 'r')
+                    tmpstring = f.read()
                     f.close()
                     try:
-                        tmpYAML = yaml.load(__evaluateString(tmpString))
-                        dicts.append(tmpYAML)
-                    except(yaml.scanner.ScannerError):
+                        tmpyaml = yaml.load(__evaluateString(tmpstring))
+                        dicts.append(tmpyaml)
+                    except yaml.scanner.ScannerError:
                         log("Error while parsing YAML file", "ERROR")
-                except(FileNotFoundError):
+                except FileNotFoundError:
                     log("The file "+file+" was not found.", "ERROR")
     return dicts
 
+
+# Update definitions from files
+print("Parsing definitions from: " + os.path.dirname(__file__) + "/definitions")
+updateDefs(os.path.dirname(__file__) + "/definitions")

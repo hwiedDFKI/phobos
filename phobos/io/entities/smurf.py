@@ -109,7 +109,7 @@ def deriveEntity(entity, outpath, savetosubfolder):
 
 
 def gatherAnnotations(model):
-    """This function gathers custom properties annotating elements of the robot
+    """Gathers custom properties annotating elements of the robot
     across the model. These annotations were created in the model.py
     module and are marked with a leading '$'.
 
@@ -473,7 +473,7 @@ def exportSmurf(model, path):
 #             outputfile.write(yaml.dump(self.robot))#, default_flow_style=False)) #last parameter prevents inline formatting for lists and dictionaries
 
 
-# registering export functions of types with Phobos
+# registering import/export functions of types with Phobos
 entity_type_dict = {'smurf': {'export': exportSmurf,
                               'extensions': ('smurf',)}
                     }
