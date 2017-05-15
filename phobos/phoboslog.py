@@ -79,8 +79,8 @@ def decorate(level):
 def log(message, level="INFO", origin=None, prefix=""):
     """Logs a given message to the blender console and logging file if present
     and if log level is low enough. The origin can be defined as string.
-    However, if not a string the information will also be displayed in the
-    Blender status bar.
+    The message is logged by the operator depending on the loglevel
+    settings.
 
     :param message: The message to log.
     :type message: str.
@@ -121,11 +121,25 @@ def log(message, level="INFO", origin=None, prefix=""):
         # log to terminal or Blender
         if prefs.logtoterminal:
             print(terminalmsg)
+        else:
+            # log in GUI depending on loglevel
+            import sys
+            # start from this function
+            frame = sys._getframe(1)
+            f_name = frame.f_code.co_name
+            # go back until operator (using execute)
+            while f_name != 'execute' and frame is not None:
+                frame = frame.f_back
+                f_name = frame.f_code.co_name
 
-        # show message in Blender status bar.
-        if origin is not None and type(origin) is not str:
-            # format report message to remove loging level and originname
-            msg = msg.split(level)[1][1:]
-            msg = msg.split(originname)[0][:-2]
-            origin.report({level}, msg)
+            # use operator to show message in Blender
+            if 'self' in frame.f_locals:
+                origin = frame.f_locals['self']
+
+            # show message in Blender status bar.
+            if origin is not None and type(origin) is not str:
+                # format report message to remove loging level and originname
+                msg = msg.split(level)[1][1:]
+                msg = msg.split(originname)[0][:-2]
+                origin.report({level}, msg)
 

@@ -24,6 +24,10 @@ GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License
 along with Phobos.  If not, see <http://www.gnu.org/licenses/>.
+
+File operators/editing.py
+
+@author: Kai von Szadkowski, Stefan Rahms, Simon Reichel
 """
 
 import math
@@ -285,9 +289,9 @@ class SetXRayOperator(Operator):
         description="Show objects via x-ray")
 
     show = BoolProperty(
-        name="Show",
+        name="Enable X-Ray",
         default=True,
-        description="Set to")
+        description="Enable or disable X-Ray")
 
     namepart = StringProperty(
         name="Name Contains",
@@ -303,7 +307,7 @@ class SetXRayOperator(Operator):
         layout.label(text="Select items for X-ray view")
 
         layout.prop(self, "objects")
-        layout.prop(self, "show", text="enable X-Ray view" if self.show else "disable X-Ray view")
+        layout.prop(self, "show")
 
         # show name text field only when changing by name
         if self.objects == 'by name':
@@ -346,7 +350,7 @@ class SetPhobosType(Operator):
     @classmethod
     def poll(cls, context):
         return len(context.selected_objects) > 0 and (
-                context.active_object.mode == 'OBJECT')
+                context.selected_objects[0].mode == 'OBJECT')
 
     def invoke(self, context, event):
         # take phobostype from active object
@@ -530,7 +534,7 @@ class SmoothenSurfaceOperator(Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        show_progress = bpy.app.version[0] * 100 + bpy.app.version[1] >= 269;
+        show_progress = bUtils.getBlenderVersion() >= 269
         objs = filter(lambda e: e.type == "MESH", context.selected_objects)
         if show_progress:
             wm = context.window_manager
@@ -577,7 +581,7 @@ class CreateInertialOperator(Operator):
 
     def execute(self, context):
         links = [obj for obj in context.selected_objects if obj.phobostype == 'link']
-        show_progress = bpy.app.version[0] * 100 + bpy.app.version[1] >= 269
+        show_progress = bUtils.getBlenderVersion() >= 269
         if show_progress:
             wm = context.window_manager
             total = float(len(links))
@@ -1034,20 +1038,20 @@ class CreateLinksOperator(Operator):
 
     size = FloatProperty(
         name="Visual Link Size",
-        default=0.2,
+        default=1.0,
         description="Size of the created link"
     )
 
     parenting = BoolProperty(
-        name='Parenting',
+        name='Parenting hierarchy',
         default=False,
-        description='Parent associated objects to created links?'
+        description='Use parenting hierarchy for links?'
     )
 
     parentobject = BoolProperty(
-        name='Parent Object(s)',
+        name='Include selected Object(s)',
         default=False,
-        description='Parent objects to newly created links?'
+        description='Add selected objects to link hierarchy?'
     )
 
     namepartindices = StringProperty(
@@ -1081,6 +1085,19 @@ class CreateLinksOperator(Operator):
                                            prefix=self.prefix)
         return {'FINISHED'}
 
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "linktype")
+        layout.prop(self, "size")
+        layout.prop(self, "parenting")
+
+        # show parentobject only when using parenting hierarchy
+        if self.parenting == True:
+            layout.prop(self, "parentobject")
+
+        layout.prop(self, "namepartindices")
+        layout.prop(self, "separator")
+        layout.prop(self, "prefix")
 
 def getControllerParameters(name):
     """
@@ -1154,7 +1171,8 @@ class CreateMimicJointOperator(Operator):
     @classmethod
     def poll(cls, context):
         ob = context.active_object
-        objs = filter(lambda e: "phobostype" in e and e.phobostype == "link", context.selected_objects)
+        objs = list(filter(lambda e: "phobostype" in e and e.phobostype ==
+                           "link", context.selected_objects))
         return (ob is not None and ob.phobostype == 'link'
                 and len(objs) > 1)
 
