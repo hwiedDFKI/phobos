@@ -31,6 +31,7 @@ import phobos.model.models as models
 import phobos.utils.naming as nUtils
 from phobos.phoboslog import log
 
+# TODO this function won't work at all... Finish this
 def deriveGenericEntity(entityobj, outpath=None):
     """This function handles an entity of unknown type by simply exporting its custom properties.
 
@@ -52,10 +53,10 @@ def deriveGenericEntity(entityobj, outpath=None):
                       '../meshes/' if structured else '')
 
 
-def exportGenericEntity():
+def exportGenericEntity(entity, outpath):
     pass
 
 # registering import/export functions of types with Phobos
-entity_type_dict = {'smurf': {'export': exportGenericEntity,
+entity_type_dict = {'generic': {'export': exportGenericEntity,
                               'extensions': ('yaml',)}
                     }

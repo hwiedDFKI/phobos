@@ -45,6 +45,7 @@ import phobos.model.models as models
 import phobos.model.links as links
 import phobos.utils.selection as sUtils
 import phobos.utils.io as ioUtils
+import phobos.utils.blender as bUtils
 from phobos.utils.io import securepath
 import phobos.io.entities as entities
 import phobos.io.meshes as meshes
@@ -69,6 +70,7 @@ class ExportSceneOperator(Operator):
 
     def execute(self, context):
         exportlist = []
+        # TODO variable not used
         exportsettings = ioUtils.getExpSettings()
 
         # identify all entities' roots in the scene
@@ -84,6 +86,7 @@ class ExportSceneOperator(Operator):
             log("Adding entity '" +
                 str(root["entity/name"]) + "' to scene.", "INFO")
             if root["entity/type"] in entity_types:
+                # TODO delete me?
                 # try:
                 if (self.exportModels and
                         'export' in entity_types[root['entity/type']] and
@@ -98,12 +101,15 @@ class ExportSceneOperator(Operator):
                         formatlist = [root['entity/type']]
                     exportModel(root, modelpath, formatlist)
                     models.add(root['modelname'])
+                # known entity export
                 entity = entity_types[root["entity/type"]]['derive'](root,
-                                                                     os.path.join(ioUtils.getExportPath(), self.sceneName))  # known entity export
+                                                                     os.path.join(ioUtils.getExportPath(), self.sceneName))
+                # TODO delete me?
                 # except KeyError:
                 #    log("Required method ""deriveEntity"" not implemented for type " + entity["entity/type"], "ERROR")
                 #    continue
-            else:  # generic entity export
+            # generic entity export
+            else:
                 entity = deriveGenericEntity(root)
             exportlist.append(entity)
         for scenetype in scene_types:
@@ -126,6 +132,12 @@ class ExportModelOperator(Operator):
         name="Model",
         description="Model to export")
 
+    exportall = BoolProperty(
+        default=False,
+        name="Export all",
+        description="Export all (selected) models in the scene."
+    )
+
     def invoke(self, context, event):
         modellist = ioUtils.getModelListForEnumProp(self, context)
         if len(modellist) > 1:
@@ -135,14 +147,21 @@ class ExportModelOperator(Operator):
                 self.modelname = modellist[0][0]
                 return self.execute(context)
             except IndexError:
-                return {'CANCELLED'}  # TODO: Check if this correct like that
+                log("No propely defined models to export.", "ERROR")
+                return {'CANCELLED'}
 
     def execute(self, context):
         roots = ioUtils.getExportModels()
         if not roots:
             log("No properly defined models selected or present in scene.",
-                "WARNING", "ExportModelOperator")
+                "WARNING")
             return {'CANCELLED'}
+        elif not self.exportall:
+            roots = [root for root in roots if root['modelname'] == self.modelname]
+            if len(roots) > 1:
+                log("Ambiguous model definitions: " + self.modelname + " exists "
+                    + str(len(roots)) + " times.", "ERROR")
+                return {'CANCELLED'}
 
         for root in roots:
             # setup paths
@@ -170,9 +189,11 @@ class ExportModelOperator(Operator):
         return {'FINISHED'}
 
 
-def exportModel(root, export_path, entitytypes=None):
+def exportModel(root, export_path, entitytypes=None, model=None):
     # derive model
     model = models.buildModelDictionary(root)
+    if not model:
+        model = models.buildModelDictionary(root)
 
     # export model in selected formats
     if entitytypes is None:
@@ -216,7 +237,7 @@ def exportModel(root, export_path, entitytypes=None):
     # TODO: Move texture export to individual formats? This is practically SMURF
     # TODO: Also, this does not properly take care of textures embedded in a .blend file
     # export textures
-    if ioUtils.textureExportEnabled():
+    if ioUtils.getExpSettings().exportTextures:
         for materialname in model['materials']:
             mat = model['materials'][materialname]
             for texturetype in ['diffuseTexture', 'normalTexture',
@@ -240,7 +261,7 @@ def exportModel(root, export_path, entitytypes=None):
 class ImportModelOperator(bpy.types.Operator):
     """Import robot model file from various formats"""
     bl_idname = "phobos.import_robot_model"
-    bl_label = ""
+    bl_label = "Import Robot Model"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'FILE'
 
@@ -265,17 +286,21 @@ class ImportModelOperator(bpy.types.Operator):
                 self.entitytype]['import'](self.filepath)
             # bUtils.cleanScene()
             models.buildModelFromDictionary(model)
+            for layer in ['link', 'inertial', 'visual', 'collision', 'sensor']:
+                bUtils.toggleLayer(defs.layerTypes[layer], True)
         except KeyError:
             log("No import function available for selected model type: " + self.entitytype,
                 "ERROR", "ImportModelOperator")
         return {'FINISHED'}
 
     def invoke(self, context, event):
+        # TODO delete me?
         # wm.invoke_props_dialog(self,width=300,height=100)
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
 
+# TODO use it or delete it... Own dev branch?
 # class ViewExportOperator(Operator):
 #     """Open a file explorer window in the export path"""
 #     bl_idname = "phobos.view_export"
@@ -287,12 +312,15 @@ class ImportModelOperator(bpy.types.Operator):
 #        return {'FINISHED'}
 
 
-def generateLibEntries(param1, param2):  # FIXME: parameter?
+# FIXME: parameter?
+def generateLibEntries(param1, param2):
+    # DOCU add some docstring
     with open(os.path.join(os.path.dirname(defs.__file__), "RobotLib.yml"), "r") as f:
         return [("None",) * 3] + [(entry,) * 3 for entry in yaml.load(f.read())]
 
 
 def loadModelsAndPoses():
+    # DOCU add some docstring
     if bpy.context.user_preferences.addons["phobos"].preferences.modelsfolder:
         modelsfolder = os.path.abspath(bpy.context.user_preferences.addons[
                                        "phobos"].preferences.modelsfolder)
@@ -368,7 +396,7 @@ class ReloadModelsAndPosesOperator(bpy.types.Operator):
         modelsPosesColl = bpy.context.user_preferences.addons[
             "phobos"].preferences.models_poses
         for model_pose in modelsPosesColl:
-            if not model_pose.name in bpy.data.images.keys():
+            if model_pose.name not in bpy.data.images.keys():
                 if model_pose.type == 'robot_name':
                     bpy.data.images.new(model_pose.name, 0, 0)
                 elif 'robot_pose':
@@ -441,16 +469,17 @@ class ImportSelectedLibRobot(Operator):
             "phobos"].preferences.models_poses
         activeModelPoseIndex = bpy.context.scene.active_ModelPose
         root = None
+        # TODO delete me?
         #print("modelfile: ("+modelsPosesColl[bpy.data.images[activeModelPoseIndex].name].model_file+")")
         if context.scene.objects.active != None:
             root = sUtils.getRoot(context.scene.objects.active)
         try:
-            if (not root
-                    or not sUtils.isRoot(root)
-                    or bpy.data.images[activeModelPoseIndex].name in modelsPosesColl.keys()
-                    and modelsPosesColl[bpy.data.images[activeModelPoseIndex].name].model_file != ''
-                    and len(bpy.context.selected_objects) == 0
-                    or modelsPosesColl[bpy.data.images[activeModelPoseIndex].name].robot_name != root["modelname"]
+            if (not root or
+                    not sUtils.isRoot(root) or
+                    bpy.data.images[activeModelPoseIndex].name in modelsPosesColl.keys() and
+                    modelsPosesColl[bpy.data.images[activeModelPoseIndex].name].model_file != '' and
+                    len(bpy.context.selected_objects) == 0 or
+                    modelsPosesColl[bpy.data.images[activeModelPoseIndex].name].robot_name != root["modelname"]
                     ):
                 result = True
         except KeyError:
@@ -574,10 +603,10 @@ class ExportCurrentPoseOperator(Operator):
         modelsPosesColl = bpy.context.user_preferences.addons[
             "phobos"].preferences.models_poses
         activeModelPoseIndex = bpy.context.scene.active_ModelPose
-        return (context.selected_objects and context.active_object and sUtils.isRoot(context.active_object)
-                and bpy.data.images[activeModelPoseIndex].name in modelsPosesColl.keys()
-                and modelsPosesColl[bpy.data.images[activeModelPoseIndex].name].robot_name == context.active_object['modelname']
-                and modelsPosesColl[bpy.data.images[activeModelPoseIndex].name].type == 'robot_pose')
+        return (context.selected_objects and context.active_object and sUtils.isRoot(context.active_object) and
+                bpy.data.images[activeModelPoseIndex].name in modelsPosesColl.keys() and
+                modelsPosesColl[bpy.data.images[activeModelPoseIndex].name].robot_name == context.active_object['modelname'] and
+                modelsPosesColl[bpy.data.images[activeModelPoseIndex].name].type == 'robot_pose')
 
     def invoke(self, context, event):
         wm = context.window_manager
@@ -597,12 +626,14 @@ class ExportCurrentPoseOperator(Operator):
         elif self.decimate_type == 'DISSOLVE':
             row.prop(self, "decimate_angle_limit")
         rd = bpy.context.scene.render
+        # TODO delete me?
         #image_settings = rd.image_settings
         row.label(text="Preview Properties:")
         row.label(text="Resolution:")
         row.prop(rd, "resolution_x", text="X")
         row.prop(rd, "resolution_y", text="Y")
         row.prop(rd, "resolution_percentage", text="")
+        # TODO delete me?
         #row.label(text="File Format:")
         #row.template_image_settings(image_settings, color_management=False)
 
@@ -610,7 +641,6 @@ class ExportCurrentPoseOperator(Operator):
         return True
 
     def execute(self, context):
-        # TODO
         root = sUtils.getRoot(context.selected_objects[0])
 
         modelsPosesColl = bpy.context.user_preferences.addons[
@@ -639,7 +669,8 @@ class ExportAllPosesOperator(Operator):
     """Bake the selected model"""
     bl_idname = "phobos.export_all_poses"
     bl_label = "Export All Poses"
-    #bl_options = {'REGISTER', 'UNDO'}
+    # TODO update bl options
+    # bl_options = {'REGISTER', 'UNDO'}
     decimate_type = EnumProperty(name="Decimate Type",
                                  items=[('COLLAPSE', 'Collapse', 'COLLAPSE'), ('UNSUBDIV', 'Un-Subdivide', 'UNSUBDIV'), ('DISSOLVE', 'Planar', 'DISSOLVE')])
     decimate_ratio = FloatProperty(name="Ratio", default=0.15)
@@ -668,16 +699,19 @@ class ExportAllPosesOperator(Operator):
         elif self.decimate_type == 'DISSOLVE':
             row.prop(self, "decimate_angle_limit")
         rd = bpy.context.scene.render
+        # TODO delete me?
         #image_settings = rd.image_settings
         row.label(text="Preview Properties:")
         row.label(text="Resolution:")
         row.prop(rd, "resolution_x", text="X")
         row.prop(rd, "resolution_y", text="Y")
         row.prop(rd, "resolution_percentage", text="")
+        # TODO delete me?
         #row.label(text="File Format:")
         #row.template_image_settings(image_settings, color_management=False)
 
     def check(self, context):
+        # TODO what does this do at all?
         return True
 
     def execute(self, context):

@@ -27,51 +27,80 @@ Created on 2 Jun 2017
 """
 
 import subprocess
+import yaml
 import bpy
+import os
 from phobos.phoboslog import log
 
 
+def isGit(folder):
+    """Checks whether the folder contains a git directory."""
+    return os.path.exists(os.path.join(folder, '.git'))
+
 def cloneGit(name, url, destination):
+    # check for existing git first
+    try:
+        if os.path.exists(os.path.join(destination,name)):
+            subprocess.check_output(['git', 'status'], cwd=os.path.join(destination, name))
+            return True
+    except subprocess.CalledProcessError:
+        pass
+
+    # clone git if not existing already
     try:
         subprocess.check_output(['git', 'clone', url, name], cwd=destination, universal_newlines=True)
-        log("Cloned git into " + destination + ".", "INFO", "utils.git.cloneGit")
+        log("Cloned git into " + destination + ".", "INFO")
         return True
     except subprocess.CalledProcessError:
         log("Problem cloning git repository. Destination is either not empty or remote is incorrect.",
-            "ERROR", "utils.git.cloneGit")
-        return False
+            "ERROR")
+    return False
 
 
-def switchToBranch(branch, workingdir):
+def checkoutBranch(branch, workingdir, create=False):
     if not branch or not workingdir:
-        log("No branch specified.", "ERROR", "utils.git.switchToBranch")
+        log("No branch specified.", "ERROR")
         return False
     try:
         subprocess.check_output(['git', 'checkout', branch], cwd=workingdir, universal_newlines=True)
-        log("Switched to branch " + branch + ".", "INFO", "utils.git.switchToBranch")
+        log("Checkout branch " + branch + " successful.", "INFO")
         return True
     except subprocess.CalledProcessError:
-        try:  # checking out remote branch
-            subprocess.check_output(['git', 'checkout', '-b', branch, 'origin/'+branch], cwd=workingdir,
-                                    universal_newlines=True)
-        except subprocess.CalledProcessError:
-            log("Could not switch to branch " + branch + ".", "ERROR", "utils.git.switchToBranch")
+        if create:
+            createNewBranch(branch, workingdir)
+        else:
+            log("Could not checkout branch " + branch + ".", "ERROR")
             return False
 
 
+def createNewBranch(branch, workingdir):
+    if not branch or not workingdir:
+        log("No branch specified.", "ERROR")
+        return False
+    try:
+        subprocess.check_output(['git', 'checkout', '-b', branch], cwd=workingdir, universal_newlines=True)
+        log("Created branch " + branch + ".", "INFO")
+        return True
+    except subprocess.CalledProcessError:
+        log("Could not create branch " + branch + ".", "ERROR")
+        return False
+
+
 def checkoutCommit(commit, workingdir):
+    # DOCU add some docstring
     if not commit or not workingdir:
-        log("No commit specified.", "ERROR", "utils.git.checkoutCommit")
+        log("No commit specified.", "ERROR")
         return False
     try:
         subprocess.check_output(['git', 'checkout', commit], cwd=workingdir, universal_newlines=True)
-        log("Checked out commit " + commit + ".", "INFO", "utils.git.checkoutCommit")
+        log("Checked out commit " + commit + ".", "INFO")
         return True
     except subprocess.CalledProcessError:
-        log("Problem checking out " + commit, "ERROR", "utils.git.checkoutCommit")
+        log("Problem checking out " + commit, "ERROR")
         return False
 
-def getgitbranch():
+
+def getGitBranch():
     """Checks whether working directory (of .blend file) contains a git repository.
     Returns branch if repository is found.
     """
@@ -83,5 +112,53 @@ def getgitbranch():
     except subprocess.CalledProcessError:
         return None
     except FileNotFoundError:
-        log("No git repository found.", "ERROR", origin="utils/io/getgitbranch")
+        log("No git repository found.", "ERROR")
         return None
+
+
+def getGitRemotes(category='', folder=None):
+    """Returns a dictionary with git remotes of the shape {name: url, ...} if valid
+    category is provided, else {'fetch': {name: url, ...}, 'push': {name: url, ...}}.
+    """
+    try:
+        if not folder:
+            folder = bpy.path.abspath('//')
+        print('Checking git folder: ', folder)
+        output = str(subprocess.check_output(['git', 'remote', '-v'], cwd=folder,
+                                             universal_newlines=True))
+        remotes = {'fetch': {}, 'push': {}}
+        for line in [a for a in output.split('\n') if a != '']:
+            try:
+                linedata = line.split()
+                if 'fetch' in linedata[-1]:
+                    remotes['fetch'][linedata[0]] = linedata[1]
+                else:
+                    remotes['push'][linedata[0]] = linedata[1]
+            except IndexError:
+                log("Git return line does not fit expected output format.", "ERROR")
+        log("Found the following remotes: " + yaml.dump(remotes), "DEBUG")
+        try:
+            return remotes[category]
+        except KeyError:
+            log("No valid remotes category ('fetch'/'push') provided: " + category, "DEBUG")
+            return remotes
+    except subprocess.CalledProcessError:
+        log("CalledProcessError", "ERROR")
+        return None
+    except FileNotFoundError:
+        log("No git repository found.", "ERROR")
+        return None
+
+
+def getPushRemotesList(self, context, folder=None):
+    remotes = getGitRemotes('push', folder=folder)
+    remoteslist = [remotes[a] for a in remotes]
+    print(remoteslist)
+    return [(url,)*3 for url in remoteslist]
+
+
+def getFetchRemotesList(self, context):
+    remotes = getGitRemotes('fetch')
+    remoteslist = [remotes[a] for a in remotes]
+    print(remoteslist)
+    return [(url,)*3 for url in remoteslist]
