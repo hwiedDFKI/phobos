@@ -714,6 +714,7 @@ class PhobosModelPanel(bpy.types.Panel):
         hw1 = minlayout.column(align=True)
         hw1.label(text="Hardware", icon='MOD_SCREW')
         hw1.operator('phobos.add_motor')
+        hw1.operator('phobos.add_sensor')
         hw1.operator("phobos.add_annotations")
 
         # Masses & Inertia
@@ -1041,6 +1042,7 @@ def register():
     pcoll = prev_collections["phobos"]
     phobostypeIcons = {}
 
+    # TODO is this used anyway?
     # this needs to be registered after all contained data is set
     global supportedProps
     supportedProps = {
@@ -1068,6 +1070,7 @@ def register():
         }
     }
 
+    # TODO is this used anyway?
     global supportedCategories
     supportedCategories = {
         # CHECK this might become interesting in the future otherwise just delete it
