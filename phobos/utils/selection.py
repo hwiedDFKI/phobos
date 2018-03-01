@@ -57,10 +57,10 @@ def getChildren(root, phobostypes=(), selected_only=False, include_hidden=True):
     :type: include_hidden: bool.
     :return: list - Blender objects which are children of root.
     """
-    return [child for child in bpy.context.scene.objects if getRoot(child) == root
-            and (child.phobostype in phobostypes if phobostypes else True)
-            and (not child.hide or include_hidden)
-            and (child.select or not selected_only)]
+    return [child for child in bpy.context.scene.objects if getRoot(child) == root and
+            (child.phobostype in phobostypes if phobostypes else True) and
+            (not child.hide or include_hidden) and
+            (child.select or not selected_only)]
 
 
 def getImmediateChildren(obj, phobostypes=(), selected_only=False, include_hidden=False):
@@ -79,13 +79,13 @@ def getImmediateChildren(obj, phobostypes=(), selected_only=False, include_hidde
     :type: include_hidden: bool.
     :return: list - Blender objects which are immediate children of obj.
     """
-    return [child for child in bpy.context.scene.objects if child.parent == obj
-            and (child.phobostype in phobostypes if phobostypes else True)
-            and (not child.hide or include_hidden)
-            and (child.select or not selected_only)]
+    return [child for child in bpy.context.scene.objects if child.parent == obj and
+            (child.phobostype in phobostypes if phobostypes else True) and
+            (not child.hide or include_hidden) and
+            (child.select or not selected_only)]
 
 
-def getEffectiveParent(obj, selected_only=True, include_hidden=False):
+def getEffectiveParent(obj, ignore_selection=False, include_hidden=False):
     """
     Returns the parent of an object, i.e. the first *link* ascending the
     object tree that is selected, starting from the obj, optionally also excluding
@@ -93,43 +93,38 @@ def getEffectiveParent(obj, selected_only=True, include_hidden=False):
 
     :param obj: object of which to find the parent.
     :type obj: bpy.types.Object.
-    :param selected_only: True to find only selected parent, else False.
-    :type: selected_only: bool.
     :param include_hidden: True to include hidden objects, else False.
     :type: include_hidden: bool.
     :return: bpy.types.Object - the effective parent of the obj.
     """
     parent = obj.parent
-    while parent and ((parent.hide and not include_hidden)
-                      or (not parent.select and selected_only)):
+    while (parent and ((parent.hide and not include_hidden) or
+            (not parent.select and bpy.data.worlds[0].phobosexportsettings.selectedOnly
+             and not ignore_selection)
+             or parent.phobostype != 'link')):
         parent = parent.parent
     return parent
 
 
 def getRoot(obj=None):
     """
-    Returns the root of an object, i.e. the first going up the tree containing a
-    model name or entity name. If there is no such object up the tree, the
-    tree's top-most object is returned.
-    If no object is given, find root of the active object. If there is no
-    active object, throw an error.
+    Returns the root object of a model the Blender object obj or, if obj is
+    not provided, the active object is part of, traversing up the tree.
+    If no such object is found, returns None.
 
     :param obj: The object to find the root for.
     :type obj: bpy.types.Object.
     :return: bpy.types.Object - The root object.
     """
-    if not obj:
-        for anobj in bpy.context.scene.objects:
-            if bpy.context.scene.objects.active == anobj:
-                obj = anobj
-                break
-        else:
-            log("No root object found! Check your object selection.", "ERROR")
-            return None
-    child = obj
-    while child.parent and not ('modelname' in child or 'entity/name' in child):
-        child = child.parent
-    return child
+    obj = bpy.context.active_object if obj is None else obj
+    if obj is None:
+        log("No root object found! Check your object selection.", "ERROR")
+        return None
+    else:
+        child = obj
+        while child.parent and not isRoot(child):
+            child = child.parent
+        return child
 
 
 def getRoots():
@@ -139,15 +134,15 @@ def getRoots():
 
     :return: list - all root links.
     """
-    roots = [obj for obj in bpy.context.scene.objects if isModelRoot(obj)]
-    if not roots:
-        log("Phobos: No root objects found.", "WARNING", "getRoots")
+    roots = [obj for obj in bpy.context.scene.objects if isRoot(obj)]
+    if roots is None:
+        log("Phobos: No root objects found.", "WARNING")
     else:
-        log("Phobos: Found " + str(len(roots)) + " root object(s)", "INFO", "getRoots")
+        log("Phobos: Found " + str(len(roots)) + " root object(s): " + str(roots), "DEBUG")
     return roots  # TODO: Should we change this and all other list return values in a tuple or generator expression?
 
 
-def isModelRoot(obj):
+def isRoot(obj):
     """
     Returns whether or not the object passed to obj is a Phobos model root.
 
@@ -155,8 +150,8 @@ def isModelRoot(obj):
     :type obj: bpy.types.Object.
     :return: bool - True if obj is Phobos model root, else False.
     """
-    # TODO why check for None objects?
-    return None if obj is None else ('modelname' in obj and obj.phobostype == 'link')
+    return None if obj is None else ('modelname' in obj and obj.phobostype in ['link', 'assembly']
+                                     and obj.parent is None)
 
 
 def isEntity(obj):
@@ -167,7 +162,7 @@ def isEntity(obj):
     :type obj: bpy.types.Object.
     :return: bool - True if obj is an entity, else False.
     """
-    return 'entity/type' in obj and 'entity/name' in obj
+    return None if obj is None else ('entity/type' in obj and 'entity/name' in obj)
 
 
 def selectObjects(objects, clear=True, active=-1):
@@ -183,9 +178,12 @@ def selectObjects(objects, clear=True, active=-1):
     :type active: int.
     :return: None.
     """
+    # if no object is active, object mode can't be toggled
+    if bpy.context.scene.objects.active:
+        bpy.ops.object.mode_set(mode='OBJECT')
     if clear:
-        # TODO still required?
-        #bpy.ops.object.mode_set(mode='OBJECT')
+        # TODO delete me?
+        # bpy.ops.object.mode_set(mode='OBJECT')
         bpy.ops.object.select_all(action='DESELECT')
     for obj in objects:
         obj.select = True
@@ -200,7 +198,6 @@ def getObjectByName(name):
     :param name: The exact object name to find.
     :type name: str.
     :return: list - all found objects.
-
     """
     objlist = []
     for obj in bpy.context.scene.objects:
@@ -256,8 +253,7 @@ def getObjectByNameAndType(name, phobostype):
     for obj in bpy.data.objects:
         if name_tag in obj and name == obj[name_tag]:
             return obj
-    log("No object of type " + phobostype + " with name " + name + " found.",
-        "WARNING", "getObjectByNameAndType")
+    log("No object of type " + phobostype + " with name " + name + " found.", "WARNING")
     return None
 
 
@@ -271,5 +267,26 @@ def selectByName(name, match_case=False):
     :type match_case: bool.
     :return: None.
     """
-    #selectObjects(getObjectByName(name), True)
+    # TODO delete me?
+    # selectObjects(getObjectByName(name), True)
     selectObjects(getObjectsByPattern(name, match_case), True)
+
+
+def getSelectedObjects():
+    """
+    Returns a generator of all selected objects independent of bpy.context.
+
+    # DOCU fill this in
+    :return:
+    """
+    return (obj for obj in bpy.context.scene.objects if obj.select)
+
+
+def getObjectsByProperty(property, value):
+    # DOCU add some docstring
+    candidate = None
+    for obj in bpy.data.objects:
+        if property in obj and obj[property] == value:
+            candidate = obj
+            break
+    return candidate

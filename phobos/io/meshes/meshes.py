@@ -38,17 +38,23 @@ from phobos.phoboslog import log
 
 
 def exportMesh(obj, path, meshtype):
+    # DOCU add some docstring
     objname = nUtils.getObjectName(obj)
     tmpobjname = obj.name
-    obj.name = 'tmp_export_666'  # surely no one will ever name an object like so
+    # OPT: surely no one will ever name an object like so, better solution?
+    obj.name = 'tmp_export_666'
     tmpobject = bUtils.createPrimitive(objname, 'box', (1.0, 1.0, 1.0))
-    tmpobject.data = obj.data  # copy the mesh here
+    # copy the mesh here
+    tmpobject.data = obj.data
     outpath = os.path.join(path, obj.data.name + "." + meshtype)
     if meshtype == 'obj':
         bpy.ops.export_scene.obj(filepath=outpath, use_selection=True, use_normals=True, use_materials=False,
                                  use_mesh_modifiers=True)
     elif meshtype == 'stl':
-        bpy.ops.export_mesh.stl(filepath=outpath, use_selection=True, use_mesh_modifiers=True)
+        if bpy.app.version[0] * 100 + bpy.app.version[1] >= 277:
+            bpy.ops.export_mesh.stl(filepath=outpath, use_selection=True, use_mesh_modifiers=True)
+        else:
+            bpy.ops.export_mesh.stl(filepath=outpath, use_mesh_modifiers=True)
     elif meshtype == 'dae':
         bpy.ops.wm.collada_export(filepath=outpath, selected=True)
     bpy.ops.object.select_all(action='DESELECT')
@@ -58,6 +64,7 @@ def exportMesh(obj, path, meshtype):
 
 
 def importMesh(filepath, meshtype):
+    # DOCU add some docstring
     # tag all objects
     for obj in bpy.data.objects:
         obj['phobosTag'] = True
@@ -66,7 +73,7 @@ def importMesh(filepath, meshtype):
     try:
         mesh_type_dict[meshtype]['import'](filepath)
     except KeyError:
-        log('Unknown mesh type: ' + meshtype, 'ERROR', 'importMesh')
+        log('Unknown mesh type: ' + meshtype, 'ERROR')
 
     # find the newly imported obj
     newgeom = None
@@ -90,14 +97,17 @@ def importMesh(filepath, meshtype):
 
 
 def importObj(filepath):
+    # DOCU add some docstring
     bpy.ops.import_scene.obj(filepath=filepath)
 
 
 def importStl(filepath):
+    # DOCU add some docstring
     bpy.ops.import_mesh.stl(filepath=filepath)
 
 
 def importDae(filepath):
+    # DOCU add some docstring
     bpy.ops.wm.collada_import(filepath=filepath)
 
 

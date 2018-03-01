@@ -32,11 +32,13 @@ Created on 05 Dec 2014
 
 """
 
+import inspect
 import bpy
 from datetime import datetime
 
 # levels of detail for logging
 loglevels = ('NONE', 'ERROR', 'WARNING', 'INFO', 'DEBUG')
+
 
 class col:
     """
@@ -77,10 +79,11 @@ def decorate(level):
 
 
 def log(message, level="INFO", origin=None, prefix=""):
-    """Logs a given message to the blender console and logging file if present
+    """
+    Logs a given message to the blender console and logging file if present
     and if log level is low enough. The origin can be defined as string.
-    However, if not a string the information will also be displayed in the
-    Blender status bar.
+    The message is logged by the operator depending on the loglevel
+    settings.
 
     :param message: The message to log.
     :type message: str.
@@ -92,13 +95,19 @@ def log(message, level="INFO", origin=None, prefix=""):
     :type prefix: str.
     :return: None.
     """
+    # TODO delete me?
     # Generate name of origin
-    if origin is None:
-        originname='phoboslog'
-    elif type(origin) is not str:
-        originname = origin.bl_idname
-    else:
-        originname = origin
+    #if origin is None:
+    #    originname='phoboslog'
+    #elif type(origin) is not str:
+    #    originname = origin.bl_idname
+    #else:
+    #    originname = origin
+    #originname = inspect.stack()[1][1].split('addons/')[-1] + ' - ' + inspect.stack()[1][3]
+    callerframerecord = inspect.stack()[1]
+    frame = callerframerecord[0]
+    info = inspect.getframeinfo(frame)
+    originname = info.filename.split('addons/')[-1] + ' - ' + info.function + '(' + str(info.lineno) + ')'
 
     # Display only messages up to preferred log level
     prefs = bpy.context.user_preferences.addons["phobos"].preferences
@@ -114,18 +123,32 @@ def log(message, level="INFO", origin=None, prefix=""):
                 with open(prefs.logfile, "a") as lf:
                     lf.write(date + "  " + msg + "\n")
             except IOError:
-                # TODO Infinite loop can occur when harddrive has an error!
+                # FIXME Infinite loop can occur when harddrive has an error!
                 # Thus, logging the IOError should be handled differently...
-                log("Cannot write to log file! Resetting it.", "ERROR", __name__+".log")
+                log("Cannot write to log file! Resetting it: " + __name__ + ".log", "ERROR")
 
         # log to terminal or Blender
         if prefs.logtoterminal:
             print(terminalmsg)
+        else:
+            # log in GUI depending on loglevel
+            import sys
+            # start from this function
+            frame = sys._getframe(1)
+            f_name = frame.f_code.co_name
+            # go back until operator (using execute)
+            while f_name != 'execute' and frame is not None:
+                frame = frame.f_back
+                f_name = frame.f_code.co_name
 
-        # show message in Blender status bar.
-        if origin is not None and type(origin) is not str:
-            # format report message to remove loging level and originname
-            msg = msg.split(level)[1][1:]
-            msg = msg.split(originname)[0][:-2]
-            origin.report({level}, msg)
+            # use operator to show message in Blender
+            if 'self' in frame.f_locals:
+                origin = frame.f_locals['self']
 
+            # show message in Blender status bar.
+            if origin is not None and type(origin) is not str:
+                # CHECK are the messages in status bar working?
+                # format report message to remove loging level and originname
+                msg = msg.split(level)[1][1:]
+                msg = msg.split(originname)[0][:-2]
+                origin.report({level}, msg)

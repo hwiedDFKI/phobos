@@ -35,17 +35,17 @@ import yaml
 import bpy
 import phobos.defs as defs
 import phobos.model.models as models
-import phobos.utils.selection as sUtils
-from phobos.utils.io import securepath
+import phobos.utils.io as ioUtils
 from phobos.io.entities.urdf import sort_urdf_elements
 from phobos.phoboslog import log
 
 
-def deriveEntity(entity, outpath, savetosubfolder):
+def deriveEntity(root, outpath):
     """Derives the dictionary for a SMURF entity from the phobos model dictionary.
 
-    :param entity: The smurf root object.
-    :type entity: bpy.types.Object
+    # TODO savetosubfolder is not a parameter
+    :param root: The smurf root object.
+    :type root: bpy.types.Object
     :param outpath: The path to export the smurf to.
     :type outpath: str
     :param savetosubfolder: If True the export path has a subfolder for this smurf entity.
@@ -53,26 +53,23 @@ def deriveEntity(entity, outpath, savetosubfolder):
     :return: dict - An entry for the scenes entitiesList
 
     """
+    entitypose = models.deriveObjectPose(root)
+    entity = models.initObjectProperties(root, 'entity', ['link', 'joint', 'motor'])
+    if 'parent' not in entity and 'joint/type' in root and root['joint/type'] == 'fixed':
+        entity['parent'] = 'world'
+    entity["position"] = entitypose["translation"]
+    entity["rotation"] = entitypose["rotation_quaternion"]
 
-    smurf = entity
-
-    # determine outpath for the smurf export
-    # differentiate between full model and baked reference
-    if "entity/isReference" in smurf:
+    # check model data if entity is a reference
+    # FIXME: this part is broken but not used at the moment anyways
+    if "isReference" in entity:
+        entity.pop("isReference")
         bpy.ops.scene.reload_models_and_poses_operator()
         modelsPosesColl = bpy.context.user_preferences.addons["phobos"].preferences.models_poses
         for robot_model in modelsPosesColl:
-            if (smurf["modelname"] == robot_model.robot_name) and (smurf["entity/pose"] == robot_model.label):
-                entitypose = models.deriveObjectPose(smurf)
-                entry      = models.initObjectProperties(smurf, 'entity', ['link', 'joint', 'motor'])
-                entry.pop("isReference");
-
-                entry['file'] = os.path.join(os.path.relpath(robot_model.path,outpath), smurf["modelname"] + ".smurf")
-                if 'parent' not in entry and 'joint/type' in smurf and smurf['joint/type'] == 'fixed':
-                    entry['parent'] = 'world'
-                entry["position"] = entitypose["translation"]
-                entry["rotation"] = entitypose["rotation_quaternion"]
-
+            if (root["modelname"] == robot_model.robot_name) and (root["entity/pose"] == robot_model.label):
+                pass
+        entity['file'] = os.path.join(os.path.relpath(robot_model.path, outpath), root["name"] + ".smurf")
         '''
         with open(os.path.join(os.path.dirname(defs.__file__), "RobotLib.yml"), "r") as f:
             robots = yaml.load(f.read())
@@ -87,25 +84,13 @@ def deriveEntity(entity, outpath, savetosubfolder):
                     shutil.copytree(fullpath, os.path.join(smurf_outpath, filename))
         '''
     else:
-        smurf_outpath = securepath(os.path.join(outpath, entity["modelname"]) if savetosubfolder else outpath)
-        log("smurf_outpath: " + outpath, "DEBUG", "exportSMURFsScene")
-
-        log("Exporting " + smurf["entity/name"] + " as a smurf entity to " + smurf_outpath, "INFO", "deriveSMURFEntity",
-            "\n\n")
-        subfolder = smurf["modelname"] if savetosubfolder else ""
-        sUtils.selectObjects(sUtils.getChildren(smurf), clear=True)  # re-select for mesh export
-        model, objectlist = models.buildModelDictionary(smurf)
-        export(model, objectlist, smurf_outpath) # FIXME: this is the export function from entities!
-        entitypose = models.deriveObjectPose(smurf)
-        entry = models.initObjectProperties(smurf, 'entity', ['link', 'joint', 'motor'])
-
-        entry['file'] = (os.path.join(subfolder, smurf["modelname"]+".smurf") if os.path.isfile(smurf_outpath)
-                         else os.path.join(subfolder, "smurf", smurf["modelname"]+".smurf"))
-        if 'parent' not in entry and 'joint/type' in smurf and smurf['joint/type'] == 'fixed':
-            entry['parent'] = 'world'
-        entry["position"] = entitypose["translation"]
-        entry["rotation"] = entitypose["rotation_quaternion"]
-    return entry
+        modelpath = os.path.join(outpath, root['modelname'])
+        if ioUtils.getExpSettings().structureExport:
+            modelpath = os.path.join(modelpath, 'smurf')
+        # TODO why the spacing between the paths?
+        log("Scene paths: " + outpath + ' ' + modelpath, "DEBUG")
+        entity['file'] = os.path.join(os.path.relpath(modelpath, os.path.dirname(outpath)), root['modelname']+".smurf")
+    return entity
 
 
 def gatherAnnotations(model):
@@ -196,7 +181,7 @@ def gatherLevelOfDetailSettings(model):
 
 
 def sort_for_yaml_dump(structure, category):
-    """Please add doc ASAP
+    """ TODO Please add doc ASAP
     :param structure:
     :param category:
     :return:
@@ -214,7 +199,7 @@ def sort_for_yaml_dump(structure, category):
 
 
 def sort_dict_list(dict_list, sort_key):
-    """Please add doc ASAP
+    """TODO Please add doc ASAP
     :param dict_list:
     :param sort_key:
     :return:
@@ -235,7 +220,7 @@ def sort_dict_list(dict_list, sort_key):
 
 
 def exportSmurf(model, path):
-    log(model['name'] + ' ' + path, "DEBUG", "exportSmurf")
+    log(model['name'] + ' ' + path, "DEBUG")
     """This function exports a given model to a specific path as a smurf representation.
 
     :param model: The model you want to export.
@@ -245,6 +230,7 @@ def exportSmurf(model, path):
 
     """
     collisiondata = deriveRefinedCollisionData(model)
+    # TODO delete me?
     # capsules = []
     # capsules = gatherCollisionCapsules(model)
     lodsettings = gatherLevelOfDetailSettings(model)
@@ -256,7 +242,8 @@ def exportSmurf(model, path):
                   'controllers': model['controllers'] != {},
                   'collision': collisiondata != {},
                   'visuals': lodsettings != {},
-                  'lights': model['lights'] != {}
+                  'lights': model['lights'] != {},
+                  'submechanisms': model['submechanisms'] != []
                   }
 
     # create all filenames
@@ -269,14 +256,17 @@ def exportSmurf(model, path):
                  'collision': model['name'] + "_collision.yml",
                  'visuals': model['name'] + "_visuals.yml",
                  'lights': model['name'] + "_lights.yml",
+                 'submechanisms': model['name'] + "_submechanisms.yml"
                  }
-    fileorder = ['collision', 'visuals', 'materials', 'motors', 'sensors', 'controllers', 'state', 'lights']
+    fileorder = ['collision', 'visuals', 'materials', 'motors', 'sensors',
+                 'controllers', 'state', 'lights', 'submechanisms']
     urdf_path = '../urdf/'
     urdf_filename = model['name'] + '.urdf'
 
     # gather annotations and data from text files
     annotationdict = gatherAnnotations(model)
     for category in annotationdict:
+        # TODO use os.path?
         filenames[category] = model['name'] + '_' + category + '.yml'
         fileorder.append(category)
         exportdata[category] = True
@@ -286,6 +276,7 @@ def exportSmurf(model, path):
         if text.name.startswith(model['name']+'::'):
             dataname = text.name.split('::')[-1]
             customdatalist.append(dataname)
+            # TODO use os.path?
             filenames[dataname] = model['name'] + '_' + dataname + '.yml'
             fileorder.append(dataname)
             exportdata[dataname] = True
@@ -293,7 +284,8 @@ def exportSmurf(model, path):
     infostring = ' definition SMURF file for "' + model['name'] + '", ' + model["date"] + "\n\n"
 
     # write model information
-    log("Writing SMURF model to " + smurf_filename, "INFO", "exportModelToSMURF")
+    log("Writing SMURF model to " + smurf_filename, "INFO")
+    # CHECK are these filepaths failsafe in Windows?
     modeldata = {"date": model["date"],
                  "files": [urdf_path + urdf_filename] + [filenames[f] for f in fileorder if exportdata[f]]}
     # append custom data
@@ -304,6 +296,7 @@ def exportSmurf(model, path):
         op.write("modelname: " + model['name'] + "\n")
         op.write(yaml.dump(modeldata, default_flow_style=False))
 
+    # TODO delete me?
     # #write semantics (SRDF information in YML format)
     # if export['semantics']:
     #     with open(path + filenames['semantics'], 'w') as op:
@@ -316,20 +309,23 @@ def exportSmurf(model, path):
     #             semantics['chains'] = model['chains']
     #         op.write(yaml.dump(semantics, default_flow_style=False))
 
-    # write state (state information of all joints, sensor & motor activity etc.) #TODO: implement everything but joints
+    # TODO: implement everything but joints
+    # write state (state information of all joints, sensor & motor activity etc.)
     if exportdata['state']:
         states = []
         # gather all states
         for jointname in model['joints']:
             joint = model['joints'][jointname]
-            if 'state' in joint:  # this should always be the case, but testing doesn't hurt
+            # this should always be the case, but testing doesn't hurt
+            if 'state' in joint:
                 tmpstate = joint['state'].copy()
                 tmpstate['name'] = jointname
                 states.append(joint['state'])
         with open(os.path.join(path, filenames['state']), 'w') as op:
             op.write('#state' + infostring)
             op.write("modelname: " + model['name'] + '\n')
-            op.write(yaml.dump(states))  #, default_flow_style=False))
+            # TODO am I still needed?
+            op.write(yaml.dump(states))  # , default_flow_style=False))
 
     # write materials, sensors, motors & controllers
     for data in ['materials', 'sensors', 'motors', 'controllers', 'lights']:
@@ -338,12 +334,14 @@ def exportSmurf(model, path):
                 op.write('#' + data + infostring)
                 op.write(yaml.dump(sort_for_yaml_dump({data: list(model[data].values())}, data),
                                    default_flow_style=False))
+                # TODO delete me?
                 #op.write(yaml.dump({data: list(model[data].values())}, default_flow_style=False))
 
     # write additional collision information
     if exportdata['collision']:
         with open(os.path.join(path, filenames['collision']), 'w') as op:
             op.write('#collision data' + infostring)
+            # TODO delete me?
             #op.write(yaml.dump({'collision': list(bitmasks.values())}, default_flow_style=False))
             op.write(yaml.dump({'collision': [collisiondata[key] for key in sorted(collisiondata.keys())]},
                                default_flow_style=False))
@@ -372,14 +370,21 @@ def exportSmurf(model, path):
                 op.write('#' + data + infostring)
                 op.write(yaml.dump({data: list(model[data].values())}, default_flow_style=False))
 
+    # write submechanisms
+    with open(os.path.join(path, filenames['submechanisms']), 'w') as op:
+        op.write('#submechanisms' + infostring)
+        op.write(yaml.dump({'submechanisms': model['submechanisms']}))#, default_flow_style=False))
+
+    # TODO delete me?
     ## write custom yml files
     #if bpy.data.worlds[0].exportCustomData:
-    #    log("Exporting custom files to to " + path + "...", "INFO", "exportModelToSMURF")
+    #    log("Exporting custom files to to " + path + "...", "INFO")
     #    for text in customtexts:
     #        with open(os.path.join(path, text.name), 'w') as op:
     #            op.write('\n'.join(line.body for line in text.lines))
 
 
+# CHECK why is this class disabled?
 # class SMURFModelParser(RobotModelParser):
 #     """Class derived from RobotModelParser which parses a SMURF model"""
 #
@@ -389,6 +394,7 @@ def exportSmurf(model, path):
 #     def parseModel(self):
 #         print("Parsing SMURF model...")
 #         #smurf = None
+#         # TODO check for filename consistency (for Windows)
 #         with open(self.filepath, 'r') as smurffile:
 #             smurf = yaml.load(smurffile)
 #         if smurf is None:
@@ -396,6 +402,7 @@ def exportSmurf(model, path):
 #             return None
 #         urdffile = None
 #         srdffile = None
+#         # TODO check filename consistency (Windows)
 #         ymlfiles = [f for f in smurf['files'] if f.endswith('.yml') or f.endswith('.yaml')]
 #         for f in smurf['files']:
 #             if f.endswith('.urdf'):
@@ -433,7 +440,8 @@ def exportSmurf(model, path):
 #                             for tag in element:
 #                                 self.robot[key][element['name']][tag] = element[tag]
 #                 elif key in 'state':
-#                     pass  # TODO: handle state
+#                 # TODO: handle state
+#                     pass
 #                 else:
 #                     custom_dicts[key] = ymldict[key]
 #
@@ -450,7 +458,8 @@ def exportSmurf(model, path):
 #                 except KeyError:
 #                     log("Could not find 'name' in custom annotation: " + str(element), "ERROR")
 #                 try:
-#                     if objtype+'s' in typelist:  #FIXME: this is a total hack!
+#                 #FIXME: this is a total hack!
+#                     if objtype+'s' in typelist:
 #                         objtype += 's'
 #                     else:
 #                         raise TypeError(objtype)
@@ -464,7 +473,7 @@ def exportSmurf(model, path):
 #                     else:
 #                         raise NameError(objname)
 #                 except TypeError:
-#                     print("###ERROR: could not find 'type' or 'name' in custom annotation", objtype, objname)
+#                     print("ERROR: could not find 'type' or 'name' in custom annotation", objtype, objname)
 #                 except NameError:
 #                     log("Element " + str(objname) + " of type " + str(objtype) + " does not exist in this model.", "ERROR")
 #
@@ -475,6 +484,6 @@ def exportSmurf(model, path):
 
 # registering import/export functions of types with Phobos
 entity_type_dict = {'smurf': {'export': exportSmurf,
+                              'derive': deriveEntity,
                               'extensions': ('smurf',)}
                     }
-

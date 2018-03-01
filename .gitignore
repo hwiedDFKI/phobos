@@ -1,7 +1,7 @@
-installconfig.txt
-yamlpath.conf
+install.conf
+python_dist_packages.conf
 *~
 .*
 *.orig
-installconfig*
 __pycache__
+doc/_build
