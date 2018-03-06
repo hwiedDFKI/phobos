@@ -135,7 +135,9 @@ def updateDefs(defsFolderPath):
                     log("Entry for "+category+'/'+key+" will be overwritten while parsing definitions.", "WARNING")
                 definitions[category][key] = value
     # Extending model definition
-    definitions['model']['sensors']['$forElem']['$selection__type'] = definitions['sensors']
+    # TODO remove the old code line
+    # definitions['model']['sensors']['$forElem']['$selection__type'] = definitions['sensors']
+    definitions['model']['sensors'] = definitions['sensors']
 
 
 def __evaluateString(s):
@@ -161,7 +163,8 @@ def __evaluateString(s):
 
 def __parseAllYAML(path):
     """Reads all .yml files in the given path and loads them.
-    It also evaluates the expressions enclosed by '&' in those files.
+    It also evaluates the expressions enclosed by '&' in those files as defined
+    by __evaluateString.
 
     :param path: The path from which to parse all files.
     :type path: str
@@ -170,20 +173,19 @@ def __parseAllYAML(path):
     dicts = []
     for root, dirs, files in os.walk(path):
         for file in files:
-            print('  '+file)
             if file.endswith(".yml"):
                 try:
-                    f = open(os.path.join(path, file), 'r')
-                    tmpstring = f.read()
-                    f.close()
+                    with open(os.path.join(path, file), 'r') as f:
+                        tmpstring = f.read()
                     try:
+                        print('  ' + file)
                         tmpyaml = yaml.load(__evaluateString(tmpstring))
                         dicts.append(tmpyaml)
                     except yaml.scanner.ScannerError:
-                        log("Error while parsing YAML file", "ERROR")
-                # TODO filenotfounderror is not imported or so...
+                        print('ERROR: Could not parse YAML file ' + file + '.')
                 except FileNotFoundError:
-                    log("The file "+file+" was not found.", "ERROR")
+                    # we can't log as long Phobos import is not completed
+                    print('  ERROR: The file ' + file + ' was not found.')
     return dicts
 
 
