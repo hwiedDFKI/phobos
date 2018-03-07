@@ -120,24 +120,25 @@ definitions = {'motors': {},
 
 
 def updateDefs(defsFolderPath):
-    """Updates the definitions with all yml files in the given folder
+    """Updates the definitions with all yml files in the given folder.
 
     :param defsFolderPath: The path to the folder with the definitions yaml files.
     :type defsFolderPath: str
     """
     dicts = __parseAllYAML(defsFolderPath)
-    for dict in dicts:
-        for category in dict:
-            for key, value in dict[category].items():
+    for dictionary in dicts:
+        for category in dictionary:
+            for key, value in dictionary[category].items():
                 if category not in definitions:
                     definitions[category] = {}
+
+                # TODO we need to insert user data, instead overwriting existing
                 if key in definitions[category]:
-                    log("Entry for "+category+'/'+key+" will be overwritten while parsing definitions.", "WARNING")
+                    log("Entry for " + category + '/' + key +
+                        " will be overwritten while parsing definitions.", "WARNING")
                 definitions[category][key] = value
-    # Extending model definition
-    # TODO remove the old code line
-    # definitions['model']['sensors']['$forElem']['$selection__type'] = definitions['sensors']
-    definitions['model']['sensors'] = definitions['sensors']
+    # TODO remove print
+    print(yaml.dump(definitions))
 
 
 def __evaluateString(s):
@@ -171,21 +172,25 @@ def __parseAllYAML(path):
     :return: dict -- The dictionary with all parsed YAML files.
     """
     dicts = []
-    for root, dirs, files in os.walk(path):
-        for file in files:
-            if file.endswith(".yml"):
-                try:
-                    with open(os.path.join(path, file), 'r') as f:
-                        tmpstring = f.read()
-                    try:
-                        print('  ' + file)
-                        tmpyaml = yaml.load(__evaluateString(tmpstring))
-                        dicts.append(tmpyaml)
-                    except yaml.scanner.ScannerError:
-                        print('ERROR: Could not parse YAML file ' + file + '.')
-                except FileNotFoundError:
-                    # we can't log as long Phobos import is not completed
-                    print('  ERROR: The file ' + file + ' was not found.')
+    keywords = ['default', 'custom', 'user']
+    import glob
+    for filename in glob.iglob(os.path.join(path, '**/*.yml'), recursive=True):
+        try:
+            with open(filename, 'r') as f:
+                tmpstring = f.read()
+            try:
+                print('  ' + os.path.basename(filename))
+                tmpyaml = yaml.load(__evaluateString(tmpstring))
+
+                # add to collected definitions
+                dicts.append(tmpyaml)
+            except yaml.scanner.ScannerError:
+                print('ERROR: Could not parse YAML file ' +
+                      os.path.relpath(filename, start=path) + '.')
+        except FileNotFoundError:
+            # we can't log as long Phobos import is not completed
+            print('  ERROR: The file ' + os.path.relpath(filename, start=path) +
+                  ' was not found.')
     return dicts
 
 
