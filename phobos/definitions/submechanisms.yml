@@ -1,8 +1,7 @@
 # This file holds definitions of (sub)mechanisms commonly used in the
 # construction of robots, such as parallel mechanisms for joint actuation.
 
-submechanisms:
-  RR:
+RR:
     category: two_revolute_joints
     type: RR
     size: 2
@@ -11,7 +10,7 @@ submechanisms:
         passive: []
         independent: ['revolute1', 'revolute2']
         spanningtree: ['revolute1', 'revolute2']
-  rrPr:
+rrPr:
     category: lambda_mechanism
     type: rrPr
     size: 3
