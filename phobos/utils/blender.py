@@ -67,7 +67,7 @@ def createPrimitive(pname, ptype, psize, player=0, pmaterial="None", plocation=(
 
     :param pname: The primitives new name.
     :type pname: str
-    :param ptype: The new primitives type. Can be one of *box, sphere, cylinder, cone, disc*
+    :param ptype: The new primitives type. Can be one of *box, sphere, cylinder, cone, disc, ico*
     :type ptype: str
     :param psize: The new primitives size. Depending on the ptype it can be either a single float or a tuple.
     :type psize: float or list
@@ -105,6 +105,8 @@ def createPrimitive(pname, ptype, psize, player=0, pmaterial="None", plocation=(
     elif ptype == 'disc':
         bpy.ops.mesh.primitive_circle_add(vertices=psize[1], radius=psize[0], fill_type='TRIFAN', location=plocation,
                                           rotation=protation, layers=players)
+    elif ptype == 'ico':
+        bpy.ops.mesh.primitive_ico_sphere_add(size=psize, layers=players, location=plocation, rotation=protation)
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
     obj = bpy.context.object
     obj.name = pname
