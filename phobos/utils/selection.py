@@ -85,6 +85,7 @@ def getImmediateChildren(obj, phobostypes=(), selected_only=False, include_hidde
             (child.select or not selected_only)]
 
 
+# DOCU missing information for ignore_selection
 def getEffectiveParent(obj, ignore_selection=False, include_hidden=False):
     """
     Returns the parent of an object, i.e. the first *link* ascending the
